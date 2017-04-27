@@ -23,137 +23,165 @@ import tarfile
 
 from six.moves import urllib
 import tensorflow as tf
+import numpy as np
 
-import cifar10_input
+IMAGE_SIZE_X = 960
+IMAGE_SIZE_Y = 540
 
-FLAGS = tf.app.flags.FLAGS
+def add_layer(inputs, in_size, out_size, activation_function=None):
+    Weights = tf.Variable(tf.random_normal([in_size, out_size]))
+    biases = tf.Variable(tf.zeros([1, out_size]) + 0.1)
+    Wx_plus_b = tf.matmul(inputs, Weights) + biases
+    if activation_function is None:
+        outputs = Wx_plus_b
+    else:
+        outputs = activation_function(Wx_plus_b)
+    return outputs
 
-# Basic model parameters.
-tf.app.flags.DEFINE_integer('batch_size', 128,
-                            """Number of images to process in a batch.""")
-tf.app.flags.DEFINE_string('data_dir', '/tmp/cifar10_data',
-                           """Path to the CIFAR-10 data directory.""")
-tf.app.flags.DEFINE_boolean('use_fp16', False,
-                            """Train the model using fp16.""")
+def compute_accuracy(v_xs, v_ys):
+    global prediction
+    y_pre = sess.run(prediction, feed_dict={xs: v_xs, keep_prob: 1})
+    correct_prediction = tf.equal(tf.argmax(y_pre,1), tf.argmax(v_ys,1))
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+    result = sess.run(accuracy, feed_dict={xs: v_xs, ys: v_ys, keep_prob: 1})
+    return result
 
-# Global constants describing the CIFAR-10 data set.
-IMAGE_SIZE = cifar10_input.IMAGE_SIZE
-NUM_CLASSES = cifar10_input.NUM_CLASSES
-NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = cifar10_input.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN
-NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = cifar10_input.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL
+def weight_variable(shape):
+    initial = tf.truncated_normal(shape, stddev=0.1)
+    return tf.Variable(initial)
 
+def bias_variable(shape):
+    initial = tf.constant(0.1, shape=shape)
+    return tf.Variable(initial)
 
-# Constants describing the training process.
-MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
-NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
-LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
-INITIAL_LEARNING_RATE = 0.1       # Initial learning rate.
+def conv2d(x, W):
+    # stride [1, x_movement, y_movement, 1]
+    # Must have strides[0] = strides[3] = 1
+    return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
 
-# If a model is trained with multiple GPUs, prefix all Op names with tower_name
-# to differentiate the operations. Note that this prefix is removed from the
-# names of the summaries when visualizing a model.
-TOWER_NAME = 'tower'
+def max_pool_2x2(x):
+    # stride [1, x_movement, y_movement, 1]
+    return tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME')
 
-DATA_URL = 'http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz'
+def loss(pre, gt):
+    loss = tf.reduce_mean(tf.reduce_sum(tf.square(gt - pre),
+                     reduction_indices=[1]))
 
+def pre(conv):
+      return tf.reduce_mean(conv, 2)
 
-def _activation_summary(x):
-  """Helper to create summaries for activations.
-  Creates a summary that provides a histogram of activations.
-  Creates a summary that measures the sparsity of activations.
-  Args:
-    x: Tensor
-  Returns:
-    nothing
-  """
-  # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
-  # session. This helps the clarity of presentation on tensorboard.
-  tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
-  tf.summary.histogram(tensor_name + '/activations', x)
-  tf.summary.scalar(tensor_name + '/sparsity',
-                                       tf.nn.zero_fraction(x))
-
-
-def _variable_on_cpu(name, shape, initializer):
-  """Helper to create a Variable stored on CPU memory.
-  Args:
-    name: name of the variable
-    shape: list of ints
-    initializer: initializer for Variable
-  Returns:
-    Variable Tensor
-  """
-  with tf.device('/cpu:0'):
-    dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
-    var = tf.get_variable(name, shape, initializer=initializer, dtype=dtype)
-  return var
+# define placeholder for inputs to network
+input_image = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE_X, IMAGE_SIZE_Y, 6))/255.   # 28x28
+gt = tf.placeholder(tf.float32, [IMAGE_SIZE_X, IMAGE_SIZE_Y])
+#keep_prob = tf.placeholder(tf.float32)
+#x_image = tf.reshape(xs, [-1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3])
 
 
-def _variable_with_weight_decay(name, shape, stddev, wd):
-  """Helper to create an initialized Variable with weight decay.
-  Note that the Variable is initialized with a truncated normal distribution.
-  A weight decay is added only if one is specified.
-  Args:
-    name: name of the variable
-    shape: list of ints
-    stddev: standard deviation of a truncated Gaussian
-    wd: add L2Loss weight decay multiplied by this float. If None, weight
-        decay is not added for this Variable.
-  Returns:
-    Variable Tensor
-  """
-  dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
-  var = _variable_on_cpu(
-      name,
-      shape,
-      tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
-  if wd is not None:
-    weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
-    tf.add_to_collection('losses', weight_decay)
-  return var
+# conv1
+with tf.name_scope('conv1'):
+  W_conv1 = weight_variable([7,7, 6,64]) 
+  b_conv1 = bias_variable([64])
+  h_conv1 = tf.nn.relu(conv2d(input_image, W_conv1) + b_conv1) 
+  h_pool1 = max_pool_2x2(h_conv1)    
+
+# conv2
+with tf.name_scope('conv2'):
+  W_conv2 = weight_variable([5,5, 64,128]) 
+  b_conv2 = bias_variable([128])
+  h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2) 
+  h_pool2 = max_pool_2x2(h_conv2)                                      
+
+# conv3a
+with tf.name_scope('conv3a'):
+  W_conv3a = weight_variable([5,5, 128,256]) 
+  b_conv3a = bias_variable([256])
+  h_conv3a = tf.nn.relu(conv2d(h_pool2, W_conv3a) + b_conv3a) 
+  h_pool3a = max_pool_2x2(h_conv3a)
+
+# conv3b
+with tf.name_scope('conv3b'):
+  W_conv3b = weight_variable([3,3, 256,256]) 
+  b_conv3b = bias_variable([256])
+  h_conv3b = tf.nn.relu(conv2d(h_pool3a, W_conv3b) + b_conv3b) 
+  h_pool3b = h_conv3b
+
+# conv4a
+with tf.name_scope('conv4a'):
+  W_conv4a = weight_variable([3,3, 256,512]) 
+  b_conv4a = bias_variable([512])
+  h_conv4a = tf.nn.relu(conv2d(h_pool3b, W_conv4a) + b_conv4a) 
+  h_pool4a = max_pool_2x2(h_conv4a) 
+
+# conv4b
+with tf.name_scope('conv4b'):
+  W_conv4b = weight_variable([3,3, 512,512]) 
+  b_conv4b = bias_variable([512])
+  h_conv4b = tf.nn.relu(conv2d(h_pool4a, W_conv4b) + b_conv4b) 
+  h_pool4b = h_conv4b
+
+# conv5a
+with tf.name_scope('conv5a'):
+  W_conv5a = weight_variable([3,3, 512,512]) 
+  b_conv5a = bias_variable([512])
+  h_conv5a = tf.nn.relu(conv2d(h_pool4b, W_conv5a) + b_conv5a) 
+  h_pool5a = max_pool_2x2(h_conv5a) 
+
+# conv5b
+with tf.name_scope('conv5b'):
+  W_conv5b = weight_variable([3,3, 512,512]) 
+  b_conv5b = bias_variable([512])
+  h_conv5b = tf.nn.relu(conv2d(h_pool5a, W_conv5b) + b_conv5b) 
+  h_pool5b = h_conv5b
+
+# conv6a
+with tf.name_scope('conv6a'):
+  W_conv6a = weight_variable([3,3, 512,1024]) 
+  b_conv6a = bias_variable([1024])
+  h_conv6a = tf.nn.relu(conv2d(h_pool5b, W_conv6a) + b_conv6a) 
+  h_pool6a = max_pool_2x2(h_conv6a) 
+
+# conv6b
+with tf.name_scope('conv6b'):
+  W_conv6b = weight_variable([3,3, 1024,1024]) 
+  b_conv6b = bias_variable([1024])
+  h_conv6b = tf.nn.relu(conv2d(h_pool6a, W_conv6b) + b_conv6b) 
+  h_pool6b = h_conv6b
+
+# pr6 + loss6
+
+with tf.name_scope('pr6 + loss6'):
+  pr6 = pre(h_pool6b)
+  gt6 = pre(tf.reshape(input_image, [-1]))
+  loss6 = loss(pre, input_image)
+
+# upconv5
 
 
-def distorted_inputs():
-  """Construct distorted input for CIFAR training using the Reader ops.
-  Returns:
-    images: Images. 4D tensor of [batch_size, IMAGE_SIZE, IMAGE_SIZE, 3] size.
-    labels: Labels. 1D tensor of [batch_size] size.
-  Raises:
-    ValueError: If no data_dir
-  """
-  if not FLAGS.data_dir:
-    raise ValueError('Please supply a data_dir')
-  data_dir = os.path.join(FLAGS.data_dir, 'cifar-10-batches-bin')
-  images, labels = cifar10_input.distorted_inputs(data_dir=data_dir,
-                                                  batch_size=FLAGS.batch_size)
-  if FLAGS.use_fp16:
-    images = tf.cast(images, tf.float16)
-    labels = tf.cast(labels, tf.float16)
-  return images, labels
+# important step
+sess = tf.Session()
+
+if int((tf.__version__).split('.')[1]) < 12 and int((tf.__version__).split('.')[0]) < 1:  # tensorflow version < 0.12
+    writer = tf.train.SummaryWriter('logs/', sess.graph)
+else: # tensorflow version >= 0.12
+    writer = tf.summary.FileWriter("logs/", sess.graph)
+
+# tf.initialize_all_variables() no long valid from
+# 2017-03-02 if using tensorflow >= 0.12
+if int((tf.__version__).split('.')[1]) < 12:
+    init = tf.initialize_all_variables()
+else:
+    init = tf.global_variables_initializer()
+sess.run(init)
 
 
-def inputs(eval_data):
-  """Construct input for CIFAR evaluation using the Reader ops.
-  Args:
-    eval_data: bool, indicating if one should use the train or eval data set.
-  Returns:
-    images: Images. 4D tensor of [batch_size, IMAGE_SIZE, IMAGE_SIZE, 3] size.
-    labels: Labels. 1D tensor of [batch_size] size.
-  Raises:
-    ValueError: If no data_dir
-  """
-  if not FLAGS.data_dir:
-    raise ValueError('Please supply a data_dir')
-  data_dir = os.path.join(FLAGS.data_dir, 'cifar-10-batches-bin')
-  images, labels = cifar10_input.inputs(eval_data=eval_data,
-                                        data_dir=data_dir,
-                                        batch_size=FLAGS.batch_size)
-  if FLAGS.use_fp16:
-    images = tf.cast(images, tf.float16)
-    labels = tf.cast(labels, tf.float16)
-  return images, labels
 
-
+# for i in range(1000):
+#     # training
+#     sess.run(train_step, feed_dict={xs: x_data, ys: y_data})
+#     if i % 50 == 0:
+#         # to see the step improvement
+#         print(sess.run(loss, feed_dict={xs: x_data, ys: y_data}))
+ 
 def inference(images):
   """Build the CIFAR-10 model.
   Args:
@@ -166,26 +194,6 @@ def inference(images):
   # If we only ran this model on a single GPU, we could simplify this function
   # by replacing all instances of tf.get_variable() with tf.Variable().
   #
-  # conv1
-  with tf.variable_scope('conv1') as scope:
-    kernel = _variable_with_weight_decay('weights',
-                                         shape=[7, 7, 6, 64],
-                                         stddev=5e-2,
-                                         wd=0.0)
-    conv = tf.nn.conv2d(images, kernel, strides=[2, 2, 2, 2], padding='SAME')
-    biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.0))
-    pre_activation = tf.nn.bias_add(conv, biases)
-    conv1 = tf.nn.relu(pre_activation, name=scope.name)
-    _activation_summary(conv1)
-
-"""
-  # pool1
-  pool1 = tf.nn.max_pool(conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1],
-                         padding='SAME', name='pool1')
-  # norm1
-  norm1 = tf.nn.lrn(pool1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-                    name='norm1')
-"""
 
   # conv2
   with tf.variable_scope('conv2') as scope:
@@ -198,47 +206,6 @@ def inference(images):
     pre_activation = tf.nn.bias_add(conv, biases)
     conv2 = tf.nn.relu(pre_activation, name=scope.name)
     _activation_summary(conv2)
-"""
-  # norm2
-  norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75,
-                    name='norm2')
-  # pool2
-  pool2 = tf.nn.max_pool(norm2, ksize=[1, 3, 3, 1],
-                         strides=[1, 2, 2, 1], padding='SAME', name='pool2')
-
-  # local3
-  with tf.variable_scope('local3') as scope:
-    # Move everything into depth so we can perform a single matrix multiply.
-    reshape = tf.reshape(pool2, [FLAGS.batch_size, -1])
-    dim = reshape.get_shape()[1].value
-    weights = _variable_with_weight_decay('weights', shape=[dim, 384],
-                                          stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
-    local3 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
-    _activation_summary(local3)
-
-  # local4
-  with tf.variable_scope('local4') as scope:
-    weights = _variable_with_weight_decay('weights', shape=[384, 192],
-                                          stddev=0.04, wd=0.004)
-    biases = _variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
-    local4 = tf.nn.relu(tf.matmul(local3, weights) + biases, name=scope.name)
-    _activation_summary(local4)
-
-  # linear layer(WX + b),
-  # We don't apply softmax here because
-  # tf.nn.sparse_softmax_cross_entropy_with_logits accepts the unscaled logits
-  # and performs the softmax internally for efficiency.
-  with tf.variable_scope('softmax_linear') as scope:
-    weights = _variable_with_weight_decay('weights', [192, NUM_CLASSES],
-                                          stddev=1/192.0, wd=0.0)
-    biases = _variable_on_cpu('biases', [NUM_CLASSES],
-                              tf.constant_initializer(0.0))
-    softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
-    _activation_summary(softmax_linear)
-
-  return softmax_linear
-"""
 
   # conv3a
   with tf.variable_scope('conv3a') as scope:
