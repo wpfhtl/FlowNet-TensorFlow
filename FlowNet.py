@@ -59,6 +59,9 @@ def conv2d(x, W):
     # Must have strides[0] = strides[3] = 1
     return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
 
+def upconv2d(x, W):
+    return tf.nn.conv2d_transpose(x, filter=W, output_shape=, strides=[1, 2, 2, 1], padding='SAME');
+
 def max_pool_2x2(x):
     # stride [1, x_movement, y_movement, 1]
     return tf.nn.max_pool(x, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME')
@@ -68,7 +71,7 @@ def loss(pre, gt):
                      reduction_indices=[1]))
 
 def pre(conv):
-      return tf.reduce_mean(conv, 2)
+    return tf.reduce_mean(conv, 2)
 
 # define placeholder for inputs to network
 input_image = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE_X, IMAGE_SIZE_Y, 6))/255.   # 28x28
