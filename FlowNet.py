@@ -76,17 +76,27 @@ def pre(conv):
     return tf.expand_dims(tf.reduce_mean(conv, 3), -1)
     #return tf.reduce_mean(conv, 3)
 
+def input_one_image(content):
+    return tf.expand_dims(tf.to_float(tf.image.decode_png(content, channels=3, name='input_image'), name='ToFloat'), 0, name='expand_dims')
+
 # define placeholder for inputs to network
-input_image = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE_X, IMAGE_SIZE_Y, 6), name='input_image')/255.   # 28x28
-input_gt = tf.placeholder(tf.float32, [1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], name='gt')
+# input_image = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE_X, IMAGE_SIZE_Y, 6), name='input_image')/255.   # 28x28
+# input_gt = tf.placeholder(tf.float32, [1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], name='gt')
 #keep_prob = tf.placeholder(tf.float32)
 #x_image = tf.reshape(xs, [-1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3])
+
+
+input_image_left = input_one_image('E:\Files\Learning\FYP\Data\FlowNet-Data\Sampler\Driving\RGB_cleanpass\left\\0400.png')
+input_image_right = input_one_image('E:\Files\Learning\FYP\Data\FlowNet-Data\Sampler\Driving\RGB_cleanpass\\right\\0400.png')
+combine_image = tf.concat([input_image_left, input_image_right], 3)
+
+
 
 # conv1
 with tf.name_scope('conv1'):
   W_conv1 = weight_variable([7,7, 6,64]) 
   b_conv1 = bias_variable([64])
-  h_conv1 = tf.nn.relu(conv2d(input_image, W_conv1) + b_conv1) 
+  h_conv1 = tf.nn.relu(conv2d(combine_image, W_conv1) + b_conv1) 
   h_pool1 = max_pool_2x2(h_conv1)    
 
 # conv2
@@ -273,7 +283,6 @@ merged = tf.summary.merge_all()
 if int((tf.__version__).split('.')[1]) < 12 and int((tf.__version__).split('.')[0]) < 1:  # tensorflow version < 0.12
     writer = tf.train.SummaryWriter('logs/', sess.graph)
 else: # tensorflow version >= 0.12
-
     writer = tf.summary.FileWriter("logs/", sess.graph)
 
 # tf.initialize_all_variables() no long valid from
