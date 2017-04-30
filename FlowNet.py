@@ -1,3 +1,4 @@
+# -*- coding:utf8 -*-
 """
 """
 
@@ -66,20 +67,22 @@ def pre(conv):
     return tf.expand_dims(tf.reduce_mean(conv, 3), -1)
     #return tf.reduce_mean(conv, 3)
 
-def input_one_image(content):
+def input_one_image(path_to_image, channels):
   """
   Args:
     content: image path
   Returns:
     [1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3] tensor
   """
-  return tf.expand_dims(
-    tf.image.resize_image_with_crop_or_pad(
-      tf.to_float(
-        tf.image.decode_png(content, channels=3, name='input_image')
-        , name='ToFloat'), 
-    IMAGE_SIZE_X, IMAGE_SIZE_Y),
-  0, name='expand_dims')
+  contents = tf.read_file(path_to_image)
+  # return tf.expand_dims(
+  #   tf.image.resize_image_with_crop_or_pad(
+  #     tf.to_float(
+  #       tf.image.decode_png(contents, channels=3, name='input_image')
+  #       , name='ToFloat'), 
+  #   IMAGE_SIZE_X, IMAGE_SIZE_Y),
+  # 0, name='expand_dims')
+  return tf.expand_dims(tf.image.resize_image_with_crop_or_pad(tf.to_float(tf.image.decode_png(contents, channels=channels)),IMAGE_SIZE_X, IMAGE_SIZE_Y), 0)
 
 
 # define placeholder for inputs to network
@@ -88,17 +91,18 @@ def input_one_image(content):
 #keep_prob = tf.placeholder(tf.float32)
 #x_image = tf.reshape(xs, [-1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3])
 
+input_image_left = input_one_image('E:\\Files\\Learning\\FYP\\Data\\20170418\\result\\5\\L.png', 3)
+input_image_right = input_one_image('E:\Files\Learning\FYP\Data\\20170418\\result\\5\\R.png', 3)
 
-input_image_left = input_one_image('E:\Files\Learning\FYP\Data\\20170418\\result\\L.png')
-input_image_right = input_one_image('E:\Files\Learning\FYP\Data\\20170418\\result\\R.png')
 combine_image = tf.concat([input_image_left, input_image_right], 3)
 sess_test = tf.Session()
 print(sess_test.run(combine_image))
-input_gt =  tf.image.resize_image_with_crop_or_pad(
-              tf.to_float(
-                tf.image.decode_png(content, channels=1, name='input_image')
-              , name='ToFloat'), 
-            IMAGE_SIZE_X, IMAGE_SIZE_Y)
+input_gt = input_one_image('E:\\Files\\Learning\\FYP\\Data\\20170418\\result\\5\\output.png', 1)
+# input_gt =  tf.image.resize_image_with_crop_or_pad(
+#               tf.to_float(
+#                 tf.image.decode_png(tf.read_file('E:\\Files\\Learning\\FYP\\Data\\20170418\\result\\5\\output.png'), channels=1, name='input_image')
+#               , name='ToFloat'), 
+#             IMAGE_SIZE_X, IMAGE_SIZE_Y)
 #input_gt = pfmkit.load_pfm('0400.pfm', True)
 #input_gt = tf.Variable(tf.random_normal([1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], stddev=0.35), name="input_gt")
 # conv1
