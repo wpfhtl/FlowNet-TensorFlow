@@ -51,3 +51,26 @@ for Disparity, Optical Flow, and Scene Flow Estimation](http://www.cv-foundation
 |upconv1		| 4 * 4	| 2 | 64/32		| 384 * 192		| 768 * 384	| iconv2|
 |iconv1		| 3 * 3	| 1	| 96/32		| 768 * 384		| 768 * 384	| upconv1 + conv1|
 |pr1+loss1	| 3 * 3 | 1	| 32/1		| 768 * 384		| 768 * 384	| iconv1|
+
+## Issues
+* How to input png images:   
+	* [Solution 1 -- FAIL](https://github.com/tensorflow/models/issues/564):  
+	```
+	contents = ''
+	with open('path/to/image.jpeg') as f:
+   		contents = f.read()
+	tf.image.decode_jpeg(contents) 
+	```
+
+	* [Solution 2 -- FAIL](http://stackoverflow.com/questions/34340489/tensorflow-read-images-with-labels)
+	```
+	reader = tf.WholeFileReader(http://stackoverflow.com/questions/34340489/tensorflow-read-images-with-labels)
+  	key, value = reader.read(filename_queue)
+  	example = tf.image.decode_png(value)
+  	```
+
+  	* [Solution 3 -- Success](http://stackoverflow.com/questions/34340489/tensorflow-read-images-with-labels)
+  	```
+  	file_contents = tf.read_file(input_queue[0])
+    example = tf.image.decode_png(file_contents, channels=3)
+  	```
