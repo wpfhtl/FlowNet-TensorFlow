@@ -10,6 +10,9 @@ for Disparity, Optical Flow, and Scene Flow Estimation](http://www.cv-foundation
 * [Tensorflow tutorials (Eng Sub) 神经网络 教学 教程](https://www.youtube.com/watch?v=RSRkp8VAavQ&list=PLXO45tsB95cKI5AIlf5TxxFPzb-0zeVZ8)
 
 ## Network
+
+Use max pooling to replace 2-stride.
+
 ### Convolutional Network
 
 |Name | Kernel | Strides | Channels I/O | Input Resolution | Output Resolution | Input |
