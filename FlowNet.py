@@ -15,8 +15,8 @@ import tensorflow as tf
 import numpy as np
 import pfmkit
 
-IMAGE_SIZE_X = 768
-IMAGE_SIZE_Y = 384
+IMAGE_SIZE_X = 1536
+IMAGE_SIZE_Y = 768
 
 def add_layer(inputs, in_size, out_size, activation_function=None):
     Weights = tf.Variable(tf.random_normal([in_size, out_size]))
@@ -89,14 +89,18 @@ def input_one_image(content):
 #x_image = tf.reshape(xs, [-1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3])
 
 
-input_image_left = input_one_image('E:\Files\Learning\FYP\Data\FlowNet-Data\Sampler\Driving\RGB_cleanpass\left\\0400.png')
-input_image_right = input_one_image('E:\Files\Learning\FYP\Data\FlowNet-Data\Sampler\Driving\RGB_cleanpass\\right\\0400.png')
+input_image_left = input_one_image('E:\Files\Learning\FYP\Data\\20170418\\result\\L.png')
+input_image_right = input_one_image('E:\Files\Learning\FYP\Data\\20170418\\result\\R.png')
 combine_image = tf.concat([input_image_left, input_image_right], 3)
 sess_test = tf.Session()
 print(sess_test.run(combine_image))
+input_gt =  tf.image.resize_image_with_crop_or_pad(
+              tf.to_float(
+                tf.image.decode_png(content, channels=1, name='input_image')
+              , name='ToFloat'), 
+            IMAGE_SIZE_X, IMAGE_SIZE_Y)
 #input_gt = pfmkit.load_pfm('0400.pfm', True)
-input_gt = tf.Variable(tf.random_normal([1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], stddev=0.35),
-                      name="input_gt")
+#input_gt = tf.Variable(tf.random_normal([1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], stddev=0.35), name="input_gt")
 # conv1
 with tf.name_scope('conv1'):
   W_conv1 = weight_variable([7,7, 6,64]) 
