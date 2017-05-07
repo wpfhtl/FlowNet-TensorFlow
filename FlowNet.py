@@ -279,9 +279,9 @@ def main():
       input_ground_truth = np.reshape(np.mean(input_ground_truth, axis=2), (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
 
       if int((tf.__version__).split('.')[1]) < 12 and int((tf.__version__).split('.')[0]) < 1:  # tensorflow version < 0.12
-          writer = tf.train.SummaryWriter('logs/', sess.graph)
+          writer = tf.train.SummaryWriter('../logs/', sess.graph)
       else: # tensorflow version >= 0.12
-          writer = tf.summary.FileWriter("logs/", sess.graph)
+          writer = tf.summary.FileWriter("../logs/", sess.graph)
 
       # tf.initialize_all_variables() no long valid from
       # 2017-03-02 if using tensorflow >= 0.12
@@ -298,7 +298,7 @@ def main():
       writer.add_summary(result, i)
       i = i + 1
 
-  saver.save(sess, 'models/model.ckpt')
+  saver.save(sess, '../models/model.ckpt')
 
 if __name__ == '__main__':
   main()
