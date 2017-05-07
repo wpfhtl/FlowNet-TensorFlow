@@ -1,7 +1,4 @@
-# -*- coding:utf8 -*-
-"""
-"""
-
+   # -*- coding:utf8 -*-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -10,33 +7,23 @@ import os
 import re
 import sys
 import tarfile
+from os import listdir
 
 from six.moves import urllib
 from PIL import Image
 import tensorflow as tf
 import numpy as np
-import pfmkit
 
 IMAGE_SIZE_X = 1536
 IMAGE_SIZE_Y = 768
 
-def add_layer(inputs, in_size, out_size, activation_function=None):
-    Weights = tf.Variable(tf.random_normal([in_size, out_size]))
-    biases = tf.Variable(tf.zeros([1, out_size]) + 0.1)
-    Wx_plus_b = tf.matmul(inputs, Weights) + biases
-    if activation_function is None:
-        outputs = Wx_plus_b
-    else:
-        outputs = activation_function(Wx_plus_b)
-    return outputs
-
-def compute_accuracy(v_xs, v_ys):
-    global prediction
-    y_pre = sess.run(prediction, feed_dict={xs: v_xs, keep_prob: 1})
-    correct_prediction = tf.equal(tf.argmax(y_pre,1), tf.argmax(v_ys,1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    result = sess.run(accuracy, feed_dict={xs: v_xs, ys: v_ys, keep_prob: 1})
-    return result
+# def compute_accuracy(v_xs, v_ys):
+#     global prediction
+#     y_pre = sess.run(prediction, feed_dict={xs: v_xs, keep_prob: 1})
+#     correct_prediction = tf.equal(tf.argmax(y_pre,1), tf.argmax(v_ys,1))
+#     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+#     result = sess.run(accuracy, feed_dict={xs: v_xs, ys: v_ys, keep_prob: 1})
+#     return result
 
 def weight_variable(shape):
     initial = tf.truncated_normal(shape, stddev=0.1)
@@ -78,26 +65,11 @@ def input_one_image(path_to_image, channels):
   contents = tf.read_file(path_to_image)
   return tf.expand_dims(tf.to_float(tf.image.decode_png(contents, channels=channels)), 0)
 
-
-# define placeholder for inputs to network
-# input_image = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE_X, IMAGE_SIZE_Y, 6), name='input_image')/255.   # 28x28
-#input_gt = tf.placeholder(tf.float32, [1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], name='gt')
-#keep_prob = tf.placeholder(tf.float32)
-#x_image = tf.reshape(xs, [-1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3])
 def main():
   image_left = tf.placeholder(tf.float32, [1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_left')
   image_right = tf.placeholder(tf.float32, [1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_right')
   ground_truth = tf.placeholder(tf.float32, [1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], name='ground_truth')
   combine_image = tf.concat([image_left, image_right], 3)
-
-  # input_image_left = input_one_image('E:\\Files\\Learning\\FYP\\Data\\20170418\\result\\5\\L.png', 3)
-  # input_image_right = input_one_image('E:\Files\Learning\FYP\Data\\20170418\\result\\5\\R.png', 3)
-
-  # combine_image = tf.concat([input_image_left, input_image_right], 3)
-  # print(sess_test.run(combine_image))
-  # input_gt = input_one_image('E:\\Files\\Learning\\FYP\\Data\\20170418\\result\\5\\output.png', 1)
-  #input_gt = pfmkit.load_pfm('0400.pfm', True)
-  #input_gt = tf.Variable(tf.random_normal([1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], stddev=0.35), name="input_gt")
 
   # conv1
   with tf.name_scope('conv1'):
@@ -197,7 +169,7 @@ def main():
 
   # upconv4
   with tf.name_scope('upconv4'):
-    W_upconv4 = weight_variable([4,4, 256, 512]) 
+    W_upconv4 = weight_variable([4,4, 256, 512])
     b_upconv4 = bias_variable([256])
     h_upconv4 = tf.nn.relu(upconv2d_2x2(h_ipool5, W_upconv4, [1, np.int32(IMAGE_SIZE_X / 16), np.int32(IMAGE_SIZE_Y / 16), 256]) + b_upconv4) 
     h_uppool4 = h_upconv4
@@ -283,94 +255,50 @@ def main():
   with tf.name_scope('train'):
       train_step = tf.train.GradientDescentOptimizer(0.1).minimize(total_loss)
 
+  saver = tf.train.Saver()
+
   # important step
-  with tf.Session() as sess:
-    merged = tf.summary.merge_all()
+  sess = tf.Session()
+  data_path_header = 'data/'
+  #pic_path_tail = 'result/'
+  merged = tf.summary.merge_all()
+  i = 0
+  for data_path_body_1 in listdir(data_path_header):
+    for data_path_body_2 in listdir(data_path_header + data_path_body_1):
+      data_path_body = data_path_body_1 + '/' + data_path_body_2 + '/'
+      input_image_left = Image.open(data_path_header + data_path_body + 'L.png')
+      input_image_left = input_image_left.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
+      input_image_left = np.reshape(input_image_left, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
 
-    input_image_left = Image.open('E:\\Files\\Learning\\FYP\\Data\\20170418\\result\\5\\L.png')
-    input_image_left = input_image_left.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
-    input_image_left = np.reshape(input_image_left, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+      input_image_right = Image.open(data_path_header + data_path_body + 'R.png')
+      input_image_right = input_image_right.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
+      input_image_right = np.reshape(input_image_right, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
 
-    input_image_right = Image.open('E:\Files\Learning\FYP\Data\\20170418\\result\\5\\R.png')
-    input_image_right = input_image_right.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
-    input_image_right = np.reshape(input_image_right, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+      input_ground_truth = Image.open(data_path_header + data_path_body + 'output.png')
+      input_ground_truth = input_ground_truth.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
+      input_ground_truth = np.reshape(np.mean(input_ground_truth, axis=2), (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
 
-    input_ground_truth = Image.open('E:\\Files\\Learning\\FYP\\Data\\20170418\\result\\5\\output.png')
-    input_ground_truth = input_ground_truth.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
-    input_ground_truth = np.reshape(np.mean(input_ground_truth, axis=2), (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
+      if int((tf.__version__).split('.')[1]) < 12 and int((tf.__version__).split('.')[0]) < 1:  # tensorflow version < 0.12
+          writer = tf.train.SummaryWriter('logs/', sess.graph)
+      else: # tensorflow version >= 0.12
+          writer = tf.summary.FileWriter("logs/", sess.graph)
 
-    if int((tf.__version__).split('.')[1]) < 12 and int((tf.__version__).split('.')[0]) < 1:  # tensorflow version < 0.12
-        writer = tf.train.SummaryWriter('logs/', sess.graph)
-    else: # tensorflow version >= 0.12
-        writer = tf.summary.FileWriter("logs/", sess.graph)
+      # tf.initialize_all_variables() no long valid from
+      # 2017-03-02 if using tensorflow >= 0.12
+      if int((tf.__version__).split('.')[1]) < 12:
+          init = tf.initialize_all_variables()
+      else:
+          init = tf.global_variables_initializer()
+      sess.run(init)
 
-    # tf.initialize_all_variables() no long valid from
-    # 2017-03-02 if using tensorflow >= 0.12
-    if int((tf.__version__).split('.')[1]) < 12:
-        init = tf.initialize_all_variables()
-    else:
-        init = tf.global_variables_initializer()
-    sess.run(init)
-
-    for i in range(10):
-      sess.run(train_step, 
-              feed_dict={image_left:input_image_left, image_right:input_image_right, ground_truth:input_ground_truth})
-      result =sess.run(merged,
+      #sess.run(train_step,
+              #feed_dict={image_left:input_image_left, image_right:input_image_right, ground_truth:input_ground_truth})
+      result, _ =sess.run([merged, train_step],
               feed_dict={image_left:input_image_left, image_right:input_image_right, ground_truth:input_ground_truth})
       writer.add_summary(result, i)
+      i = i + 1
+
+  saver.save(sess, 'models/model.ckpt')
 
 if __name__ == '__main__':
   main()
-
-def train(total_loss, global_step):
-  """Train CIFAR-10 model.
-  Create an optimizer and apply to all trainable variables. Add moving
-  average for all trainable variables.
-  Args:
-    total_loss: Total loss from loss().
-    global_step: Integer Variable counting the number of training steps
-      processed.
-  Returns:
-    train_op: op for training.
-  """
-  # Variables that affect learning rate.
-  num_batches_per_epoch = NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN / FLAGS.batch_size
-  decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)
-
-  # Decay the learning rate exponentially based on the number of steps.
-  lr = tf.train.exponential_decay(INITIAL_LEARNING_RATE,
-                                  global_step,
-                                  decay_steps,
-                                  LEARNING_RATE_DECAY_FACTOR,
-                                  staircase=True)
-  tf.summary.scalar('learning_rate', lr)
-
-  # Generate moving averages of all losses and associated summaries.
-  loss_averages_op = _add_loss_summaries(total_loss)
-
-  # Compute gradients.
-  with tf.control_dependencies([loss_averages_op]):
-    opt = tf.train.GradientDescentOptimizer(lr)
-    grads = opt.compute_gradients(total_loss)
-
-  # Apply gradients.
-  apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
-
-  # Add histograms for trainable variables.
-  for var in tf.trainable_variables():
-    tf.summary.histogram(var.op.name, var)
-
-  # Add histograms for gradients.
-  for grad, var in grads:
-    if grad is not None:
-      tf.summary.histogram(var.op.name + '/gradients', grad)
-
-  # Track the moving averages of all trainable variables.
-  variable_averages = tf.train.ExponentialMovingAverage(
-      MOVING_AVERAGE_DECAY, global_step)
-  variables_averages_op = variable_averages.apply(tf.trainable_variables())
-
-  with tf.control_dependencies([apply_gradient_op, variables_averages_op]):
-    train_op = tf.no_op(name='train')
-
-  return train_op
