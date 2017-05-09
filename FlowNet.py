@@ -1,4 +1,5 @@
-   # -*- coding:utf8 -*-
+# -*- coding:utf8 -*-
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -14,19 +15,15 @@ from six.moves import urllib
 from PIL import Image
 import tensorflow as tf
 import numpy as np
+from tensorflow.core.protobuf import saver_pb2
 
-IMAGE_SIZE_X = 1536
-IMAGE_SIZE_Y = 768
-BATCH_SIZE = 5
-TRAINING_ROUNDS = 2
-
-# def compute_accuracy(v_xs, v_ys):
-#     global prediction
-#     y_pre = sess.run(prediction, feed_dict={xs: v_xs, keep_prob: 1})
-#     correct_prediction = tf.equal(tf.argmax(y_pre,1), tf.argmax(v_ys,1))
-#     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-#     result = sess.run(accuracy, feed_dict={xs: v_xs, ys: v_ys, keep_prob: 1})
-#     return result
+IMAGE_SIZE_X = 768
+IMAGE_SIZE_Y = 384
+BATCH_SIZE = 16
+ROUND_STEP = 16
+TRAINING_ROUNDS = 150
+LEARNING_RATE = 4e-4
+MODEL_PATH = "models/model.ckpt.data-00000-of-00001"
 
 def weight_variable(shape):
     initial = tf.truncated_normal(shape, stddev=0.1)
@@ -58,23 +55,7 @@ def pre(conv):
     return tf.expand_dims(tf.reduce_mean(conv, 3), -1)
     #return tf.reduce_mean(conv, 3)
 
-
-# def input_one_image(path_to_image, channels):
-#   """
-#   Args:
-#     content: image path
-#   Returns:
-#     [1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3] tensor
-#   """
-#   contents = tf.read_file(path_to_image)
-#   return tf.expand_dims(tf.to_float(tf.image.decode_png(contents, channels=channels)), 0)
-
-def main():
-  image_left = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_left')
-  image_right = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_right')
-  ground_truth = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], name='ground_truth')
-  combine_image = tf.concat([image_left, image_right], 3)
-
+def model(combine_image, ground_truth):
   # conv1
   with tf.name_scope('conv1'):
     W_conv1 = weight_variable([7,7, 6,64]) 
@@ -148,7 +129,7 @@ def main():
   # pr6 + loss6
   with tf.name_scope('pr6_loss6'):
     pr6 = pre(h_pool6b)
-    gt6 = tf.nn.max_pool(ground_truth, ksize=[1,64,64,1], strides=[1,64,64,1], padding='SAME', name='gt6')
+    gt6 = tf.nn.avg_pool(ground_truth, ksize=[1,64,64,1], strides=[1,64,64,1], padding='SAME', name='gt6')
     loss6 = loss(pr6, gt6)
 
   # upconv5
@@ -168,7 +149,7 @@ def main():
   # pr5 + loss5
   with tf.name_scope('pr5_loss5'):
     pr5 = pre(h_iconv5)
-    gt5 = tf.nn.max_pool(ground_truth, ksize=[1,32,32,1], strides=[1,32,32,1], padding='SAME', name='gt5')
+    gt5 = tf.nn.avg_pool(ground_truth, ksize=[1,32,32,1], strides=[1,32,32,1], padding='SAME', name='gt5')
     loss5 = loss(pr5, gt5)
 
   # upconv4
@@ -188,7 +169,7 @@ def main():
   # pr4 + loss4
   with tf.name_scope('pr4_loss4'):
     pr4 = pre(h_iconv4)
-    gt4 = tf.nn.max_pool(ground_truth, ksize=[1,16,16,1], strides=[1,16,16,1], padding='SAME', name='gt4')
+    gt4 = tf.nn.avg_pool(ground_truth, ksize=[1,16,16,1], strides=[1,16,16,1], padding='SAME', name='gt4')
     loss4 = loss(pr4, gt4)
 
   # upconv3
@@ -208,7 +189,7 @@ def main():
   # pr3 + loss3
   with tf.name_scope('pr3_loss3'):
     pr3 = pre(h_iconv3)
-    gt3 = tf.nn.max_pool(ground_truth, ksize=[1,8,8,1], strides=[1,8,8,1], padding='SAME', name='gt')
+    gt3 = tf.nn.avg_pool(ground_truth, ksize=[1,8,8,1], strides=[1,8,8,1], padding='SAME', name='gt')
     loss3 = loss(pr3, gt3)
 
   # upconv2
@@ -228,7 +209,7 @@ def main():
   # pr2 + loss2
   with tf.name_scope('pr2_loss2'):
     pr2 = pre(h_iconv2)
-    gt2 = tf.nn.max_pool(ground_truth, ksize=[1,4,4,1], strides=[1,4,4,1], padding='SAME', name='gt')
+    gt2 = tf.nn.avg_pool(ground_truth, ksize=[1,4,4,1], strides=[1,4,4,1], padding='SAME', name='gt')
     loss2 = loss(pr2, gt2)
 
   # upconv1
@@ -245,28 +226,55 @@ def main():
     h_iconv1 = tf.nn.relu(conv2d(tf.concat([h_uppool1, h_pool1], 3), W_iconv1) + b_iconv1) 
     h_ipool1 = h_iconv1
 
+  final_output = h_ipool1
+
   # pr1 + loss1
   with tf.name_scope('pr1_loss1'):
     pr1 = pre(h_iconv1)
-    gt1 = tf.nn.max_pool(ground_truth, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME', name='gt')
+    gt1 = tf.nn.avg_pool(ground_truth, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME', name='gt')
     loss1 = loss(pr1, gt1)
 
   # overall loss
   with tf.name_scope('loss'):
-      total_loss = 0.5 * loss1 + 0.25 * loss2 + 0.125 * loss3 + 1/16 * loss4 + 1/32 * loss5 + 1/32 * loss6
-      tf.summary.scalar('loss', total_loss)
+    total_loss = 1/133*( 0.5 * loss1 + 0.25 * loss2 + 0.125 * loss3 + 1/16 * loss4 + 1/32 * loss5 + 1/32 * loss6)
+    
+
+  return final_output, total_loss
+
+def test():
+  image_left = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_left')
+  image_right = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_right')
+  ground_truth = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], name='ground_truth')
+  combine_image = tf.concat([image_left, image_right], 3)
+  final_output, _ = model(combine_image=combine_image, 
+                             ground_truth=ground_truth)  
+  with tf.Session() as sess:
+    saver = tf.train.Saver()
+    saver.restore(sess, 'my-model/model.ckpt-0.data-00000-of-00001')
+    # sess.run(final_output)
+    # input_left_images = np.zeros((BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+    # input_right_images = np.zeros((BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+    # input_gts = np.zeros((BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
+
+def main():
+  image_left = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_left')
+  image_right = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_right')
+  ground_truth = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], name='ground_truth')
+  combine_image = tf.concat([image_left, image_right], 3)
+  final_output, total_loss = model(combine_image=combine_image, 
+                            ground_truth=ground_truth)
+  tf.summary.scalar('loss', total_loss)
 
   with tf.name_scope('train'):
-      train_step = tf.train.GradientDescentOptimizer(0.1).minimize(total_loss)
+      optimizer = tf.train.GradientDescentOptimizer(learning_rate=LEARNING_RATE).minimize(total_loss)
 
+  # saver = tf.train.Saver(write_version = saver_pb2.SaverDef.V2)
   saver = tf.train.Saver()
 
   # important step
   sess = tf.Session()
-  data_path_header = 'data/'
-  #pic_path_tail = 'result/'
+  
   merged = tf.summary.merge_all()
-  i = 0
 
   input_left_images = np.zeros((BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
   input_right_images = np.zeros((BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
@@ -279,49 +287,89 @@ def main():
   image_num = np.size(left_images)
 
   if int((tf.__version__).split('.')[1]) < 12 and int((tf.__version__).split('.')[0]) < 1:  # tensorflow version < 0.12
-      writer = tf.train.SummaryWriter('../logs/', sess.graph)
+      writer = tf.train.SummaryWriter('logs/', sess.graph)
   else: # tensorflow version >= 0.12
-      writer = tf.summary.FileWriter("../logs/", sess.graph)
+      writer = tf.summary.FileWriter("logs/", sess.graph)
 
   # tf.initialize_all_variables() no long valid from
   # 2017-03-02 if using tensorflow >= 0.12
+
   if int((tf.__version__).split('.')[1]) < 12:
       init = tf.initialize_all_variables()
   else:
       init = tf.global_variables_initializer()
   sess.run(init)
+  # saver.restore(sess, MODEL_PATH)
 
   time_start = time.time()
+  with open("log.txt", "w+") as file:
+    for round in range(TRAINING_ROUNDS):
+      for i in range(0 ,image_num - BATCH_SIZE, ROUND_STEP):
+        for j in range(BATCH_SIZE):
+          """
+          input data
+          """
+          full_pic_name = 'data/left/' + left_images[i + j]
+          input_one_image = Image.open(full_pic_name)
+          input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
+          input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+          input_left_images[j, :, :, :] = input_one_image
 
-  for round in range(TRAINING_ROUNDS):
-    for i in range(image_num - BATCH_SIZE):
-      for j in range(BATCH_SIZE):
-        full_pic_name = 'data/left/' + left_images[i + j]
-        input_one_image = Image.open(full_pic_name)
-        input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
-        input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
-        input_left_images[j, :, :, :] = input_one_image
+          full_pic_name = 'data/right/' + right_images[i + j]
+          input_one_image = Image.open(full_pic_name)
+          input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
+          input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+          input_right_images[j, :, :, :] = input_one_image
 
-        full_pic_name = 'data/right/' + right_images[i + j]
-        input_one_image = Image.open(full_pic_name)
-        input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
-        input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
-        input_right_images[j, :, :, :] = input_one_image
+          full_pic_name = 'data/output/' + output_images[i + j]
+          input_one_image = Image.open(full_pic_name)
+          input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
+          input_one_image = np.mean(input_one_image, 2)
+          input_one_image = np.reshape(input_one_image, (IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
+          input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
+          input_gts[j, :, :, :] = input_one_image
+        result, optimizer_res, total_loss_res =sess.run([merged, optimizer, total_loss],
+                  feed_dict={image_left:input_left_images, image_right:input_right_images, ground_truth:input_gts})
+      print('round ' + str(round) + ' batch ' + str(i) + ' loss ' + str(total_loss_res))
+      file.write('round ' + str(round) + ' batch ' + str(i) + ' loss ' + str(total_loss_res) + '\n')
+      saver.save(sess, 'my-model/model.ckpt-' + str(round))
+      writer.add_summary(result, round)
+  
+  with tf.name_scope('show_result'):
+    image_left = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_left')
+    image_right = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3], name='image_right')
+    ground_truth = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1], name='ground_truth')
+    combine_image = tf.concat([image_left, image_right], 3)
+    pred, _ = model(combine_image=combine_image, 
+                               ground_truth=ground_truth)  
+    
+    input_left_images = np.zeros((BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+    input_right_images = np.zeros((BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+    input_gts = np.zeros((BATCH_SIZE, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
+    for j in range(BATCH_SIZE):  
+      start = 10
+      full_pic_name = 'data/left/' + left_images[start + j]
+      input_one_image = Image.open(full_pic_name)
+      input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
+      input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+      input_left_images = input_one_image
 
-        full_pic_name = 'data/output/' + output_images[i + j]
-        input_one_image = Image.open(full_pic_name)
-        input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
-        input_one_image = np.mean(input_one_image, 2)
-        input_one_image = np.reshape(input_one_image, (IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
-        input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
-        input_gts[j, :, :, :] = input_one_image
+      full_pic_name = 'data/right/' + right_images[start + j]
+      input_one_image = Image.open(full_pic_name)
+      input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
+      input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 3))
+      input_right_images = input_one_image
 
-        result, train_step_res, total_loss_res =sess.run([merged, train_step, total_loss],
-                feed_dict={image_left:input_left_images, image_right:input_right_images, ground_truth:input_gts})
-      print('round ' + str(round) + ' batch ' + str(i) + ' time ' + str(time.time() - time_start) + ' loss ' + str(total_loss_res))
-      time_start = time.time()
-    writer.add_summary(result, round)
-    saver.save(sess, '../models/model.ckpt')
+      full_pic_name = 'data/output/' + output_images[start + j]
+      input_one_image = Image.open(full_pic_name)
+      input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
+      input_one_image = np.mean(input_one_image, 2)
+      input_one_image = np.reshape(input_one_image, (IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
+      input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_X, IMAGE_SIZE_Y, 1))
+      input_gts = input_one_image
+
+    pred_res = sess.run([input_gts],
+                    feed_dict={image_left:input_left_images, image_right:input_right_images, ground_truth:input_gts})
 
 if __name__ == '__main__':
   main()
