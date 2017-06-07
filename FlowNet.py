@@ -21,17 +21,34 @@ import matplotlib.pyplot as plt
 
 IMAGE_SIZE_X = 768
 IMAGE_SIZE_Y = 384
-BATCH_SIZE = 16
-ROUND_STEP = 16
-TRAINING_ROUNDS = 100
+BATCH_SIZE = 12
+ROUND_STEP = 12
+TRAINING_ROUNDS = 50
 LEARNING_RATE =1e-5
 #MODELS_PATH = "/home/visg1/jzj/models/model.ckpt.data-00000-of-00001"
 MODELS_DIR = '/home/visg1/jzj/my-model'
-DATA_DIR = '/home/visg1/jzj/Data_fin2'
+DATA_DIR = '/home/visg1/jzj/Data_fin'
 LOGS_DIR = '/home/visg1/jzj/logs'
 RUNNING_LOGS_DIR = '/home/visg1/jzj/running_logs'
 OUTPUT_DIR = '/home/visg1/jzj/output'
 GT_DIR = '/home/visg1/jzj/gopro.pkl'
+TRAIN_SERIES = range(132) + range(136, 140) + range(144, 150) + range(160, 198) + range(202, 220) + range(224, 230) + range(234, 248) + range(258, 292) + range(296, 302) + range(306, 324)
+image_num = np.size(TRAIN_SERIES)
+
+
+def py_avg_pool(value, strides):
+	batch_size, height, width, channel_size = value.shape
+	res_height = int(height / strides[1])
+	res_width = int(width / strides[2])
+	print(res_height, res_width)
+	result = np.zeros((batch_size, res_height, res_width, 1))
+	for i in range(res_height):
+		for j in range(res_width):
+			for k in range(batch_size):
+				result[k, i, j, 0] = np.mean(value[k, i * int(strides[1]) : (i + 1) * int(strides[1]), j * int(strides[2]) : (j + 1) * int(strides[2]), :])
+	return result
+
+
 
 def weight_variable(shape):
     #initial = tf.truncated_normal(shape, stddev=0.1)
@@ -264,7 +281,7 @@ def model(combine_image, ground_truth):
   # overall loss
   with tf.name_scope('loss'):
     total_loss = ( 1/2 * loss1 + 1/4 * loss2 + 1/8 * loss3 + 1/16 * loss4 + 1/32 * loss5 + 1/32 * loss6)
-  return final_output, total_loss, loss1
+  return final_output, total_loss, loss1, loss2, loss3, loss4, loss5, loss6, pr6, pr5, pr4, pr3, pr2, pr1, tf.is_inf(loss6)
 
 def _norm(img):
   return (img - np.mean(img)) / np.std(img)
@@ -276,7 +293,7 @@ def main():
   image_right = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_Y, IMAGE_SIZE_X, 3], name='image_right')
   ground_truth = tf.placeholder(tf.float32, [BATCH_SIZE, IMAGE_SIZE_Y, IMAGE_SIZE_X, 1], name='ground_truth')
   combine_image = tf.concat([image_left, image_right], 3)
-  final_output, total_loss, loss1 = model(combine_image=combine_image, 
+  final_output, total_loss, loss1, loss2, loss3, loss4, loss5, loss6, pr6, pr5, pr4, pr3, pr2, pr1, loss6_inf = model(combine_image=combine_image, 
                             ground_truth=ground_truth)
   tf.summary.scalar('loss', total_loss)
 
@@ -298,7 +315,6 @@ def main():
   right_images = sorted(os.listdir(DATA_DIR + '/right/'))
   # output_images = sorted(os.listdir(DATA_DIR + '/output/'))  
 
-  image_num = np.size(left_images)
 
   # tf.initialize_all_variables() no long valid from
   # 2017-03-02 if using tensorflow >= 0.12
@@ -323,61 +339,56 @@ def main():
       for i in range(0 , image_num - BATCH_SIZE, ROUND_STEP):
 
         for j in range(BATCH_SIZE):
-          """
-          input data
-          """
-          full_pic_name = DATA_DIR+ '/left/' + left_images[i + j]
+          # input data
+          full_pic_name = DATA_DIR+ '/left/' + left_images[TRAIN_SERIES[i + j]]
           input_one_image = Image.open(full_pic_name)
-          #input_one_image = input_one_image.resize((IMAGE_SIZE_Y, IMAGE_SIZE_X))
           input_one_image = _norm(np.reshape(input_one_image, (1, IMAGE_SIZE_Y, IMAGE_SIZE_X, 3)))
-          #input_left_images[j, :, :, :] = input_one_image
           if(j == 0):
   	        input_left_images = input_one_image
           else:
             input_left_images = np.concatenate((input_left_images, input_one_image), axis=0)
 
-          full_pic_name = DATA_DIR + '/right/' + right_images[i + j]
+          full_pic_name = DATA_DIR + '/right/' + right_images[TRAIN_SERIES[i + j]]
           input_one_image = Image.open(full_pic_name)
-          #input_one_image = input_one_image.resize((IMAGE_SIZE_Y, IMAGE_SIZE_X))
           input_one_image = _norm(np.reshape(input_one_image, (1, IMAGE_SIZE_Y, IMAGE_SIZE_X, 3)))
           if(j == 0):
   	        input_right_images = input_one_image
           else:
             input_right_images = np.concatenate((input_right_images, input_one_image), axis=0)
-          #input_right_images[j, :, :, :] = input_one_image
-	  
 
-          #full_pic_name = DATA_DIR + '/output/' + output_images[i + j]
-          #input_one_image = Image.open(full_pic_name)
-          input_one_image = buf[i + j]
-	  # input_one_image = input_one_image.resize((IMAGE_SIZE_X, IMAGE_SIZE_Y))
-          # input_one_image = np.mean(input_one_image, 2)
+          input_one_image = buf[TRAIN_SERIES[i + j]]
           input_one_image = np.reshape(input_one_image, (IMAGE_SIZE_Y, IMAGE_SIZE_X, 1))
           input_one_image = np.reshape(input_one_image, (1, IMAGE_SIZE_Y, IMAGE_SIZE_X, 1))
-          #input_gts[j, :, :, :] = input_one_image
+
           if(j == 0):
   	        input_gts = input_one_image
           else:
             input_gts = np.concatenate((input_gts, input_one_image), axis=0)
-        result, optimizer_res, total_loss_res, loss1_res =sess.run([merged, optimizer, total_loss, loss1],feed_dict={image_left:input_left_images, image_right:input_right_images, ground_truth:input_gts})
-        if i % 16 == 0:
-          print('round' + str(round) + ' '+ str(i) + ' total_loss ' + str(total_loss_res) + ' loss1 ' + str(loss1_res))
-      file.write('round ' + str(round) + ' batch ' + str(i) + ' total_loss ' + str(total_loss_res) +' loss1 ' + str(loss1_res) +  '\n')
-      writer.add_summary(result, round)
-      #LEARNING_RATE = LEARNING_RATE / 10
-      #print(LEARNING_RATE)
+        result, optimizer_res, total_loss_res, loss1_res, loss2_res, loss3_res, loss4_res, loss5_res, loss6_res, pr6_res, pr5_res, pr4_res, pr3_res, pr2_res, pr1_res, loss6_inf_res =sess.run([merged, optimizer, total_loss, loss1, loss2, loss3, loss4, loss5, loss6, pr6, pr5, pr4, pr3, pr2, pr1, loss6_inf],feed_dict={image_left:input_left_images, image_right:input_right_images, ground_truth:input_gts})
+	      
+        if round == TRAINING_ROUNDS - 1:
+          final_result = (sess.run(final_output, feed_dict={image_left:input_left_images, image_right:input_right_images, ground_truth:input_gts})) 
+          for k in range(1):
+            result = np.squeeze(final_result[k])
+            result = result.astype(np.uint8)
+            plt.imsave(OUTPUT_DIR + '/' + str(i) + '.png', result, format='png')
+            file.write('round ' + str(round) + ' batch ' + str(i) + ' total_loss ' + str(total_loss_res) +' loss1 ' + str(loss1_res) +  '\n')
+
+        if i == 0:
+			#print('round' + str(round) + ' '+ str(i) + ' total_loss ' + str(total_loss_res) + ' loss1 ' + str(loss1_res), ' loss2 ' + str(loss2_res), ' loss3 '+ str(loss3_res)+ ' loss4 ' + str(loss4_res) + ' loss5 ' + str(loss5_res) + ' loss6 ' + str(loss6_res) + ' loss6_inf ' + str(loss6_inf_res))
+			#print(' pr6_real_loss ' + str(np.sqrt(np.mean(np.square(py_avg_pool(input_gts, [1,64,64,1]), pr6_res)))) + ' pr5_real_loss ' + str(np.sqrt(np.mean(np.square(py_avg_pool(input_gts, [1,32,32,1]), pr5_res)))))
+			#print(' pr4_real_loss ' + str(np.sqrt(np.mean(np.square(py_avg_pool(input_gts, [1,16,16,1]), pr4_res)))))
+			#print(' pr3_real_loss ' + str(np.sqrt(np.mean(np.square(py_avg_pool(input_gts, [1,8,8,1]), pr3_res)))))
+			#print(' pr2_real_loss ' + str(np.sqrt(np.mean(np.square(py_avg_pool(input_gts, [1,4,4,1]), pr2_res)))))
+			print(' pr1_real_loss ' + str(np.sqrt(np.mean(np.square(py_avg_pool(input_gts, [1,2,2,1]), pr1_res)))))
+			file.write('round ' + str(round) + ' batch ' + str(i) + ' total_loss ' + str(total_loss_res) +' loss1 ' + str(loss1_res) +  '\n')
+
+
+      # file.write('round ' + str(round) + ' batch ' + str(i) + ' total_loss ' + str(total_loss_res) +' loss1 ' + str(loss1_res) +  '\n')
+      # writer.add_summary(result, round)
+      # if round == 99:
+      #   final_result = (sess.run(final_output, feed_dict={image_left:input_left_images, image_right:input_right_images, ground_truth:input_gts}))
       #saver.save(sess, MODELS_DIR + '/model.ckpt-' + date.isoformat(date.today()) + str(time.time()))
-  final_result = (sess.run(final_output, feed_dict={image_left:input_left_images, image_right:input_right_images, ground_truth:input_gts}))
-  print('image')
-  #plt.imsave('test.png', input_gts[0, :, :, 0], format='png')
-  for i in range(BATCH_SIZE):
-    
-    result = np.squeeze(final_result[i])
-    print(result)
-    result = result.astype(np.uint8)
-    #print('result' + str(i))
-    #print(result)
-    plt.imsave(OUTPUT_DIR + '/' + str(i) + '.png', result, format='png')
-  
+
 if __name__ == '__main__':
   main()
